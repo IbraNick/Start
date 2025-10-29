@@ -1,0 +1,395 @@
+<!--Standart Anfang-->
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Task Manager Version 1.0</title> 
+</head>
+
+
+<body>
+    <!--Überschrift; Unterüberchrift; Datum-->
+  <header>
+    <div class="container top">
+      <div>
+        <h1>Task Manager Version 1.0</h1>
+        <div class="small">Tägliche ToDos</div>
+      </div>
+      <div style="margin-left:auto;" class="small">Datum: <span id="todayLabel"></span></div>
+    </div>
+  </header>
+
+   <!--Start Hauptklasse-->
+  <main class="container">
+   <!--Erster div für Navigationen-->
+    <div id="controls" class="card">
+        <!--mit div für Tagesnavigation-->
+      <div id="dateNav">
+        <button onclick="prevDay()">vorheriger Tag</button>
+        <input type="date" id="dayPicker" />
+        <button onclick="nextDay()">nächster Tag</button>
+        <button class="ghost" onclick="goToday()">Heute</button>
+      </div>
+
+        <!--und div für Variantennavigation-->
+      <div>
+        Variante:
+        <select id="variantSelect" onchange="changeVariant(this.value)"></select>
+        <button class="ghost" onclick="openTemplateEditor()">Vorlage editieren</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Hauptbereich: Aufgaben für den Tag -->
+      <section class="card tasks-list">
+        <h3 id="dayTitle">Aufgaben</h3>
+
+        <!-- Form zum Hinzufügen/Anpassen -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <input id="taskName" placeholder="Aufgabenbezeichnung" style="flex:2" />
+          <input id="taskDuration" placeholder="Min" style="width:70px" type="number" min="1" />
+          <input id="taskTime" placeholder="Empf. Zeit (z.B. 08:00-09:00)" style="width:160px" />
+          <input id="taskCategory" placeholder="Kategorie" style="width:100px" />
+          <input id="taskColor" type="color" value="#ff8a65" style="width:46px" />
+          <select id="taskMandatory">
+            <option value="true">Pflicht</option>
+            <option value="false">Zusatz</option>
+          </select>
+          <select id="taskRecurring">
+            <option value="none">Nicht wiederholen</option>
+            <option value="daily">Täglich</option>
+            <option value="weekly">Wöchentlich</option>
+          </select>
+          <button onclick="addTaskFromForm()">Aufgabe +</button>
+        </div>
+
+        <!--Liste mit den Aufgaben des ausgewählten Tages-->
+        <ul id="taskList" class="tasks"></ul>
+
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="saveDay()" class="ghost">Speichern</button>
+          <button onclick="resetDay()" class="ghost">Auf Vorlage zurücksetzen</button>
+          <button onclick="applyCarryOver()" class="ghost">Unerledigte nach morgen tragen</button>
+        </div>
+      </section>
+
+      <!-- Seitenleiste: Vorlagen, Wochenansicht kompakt, Hilfe -->
+      <aside class="side">
+        <!--Vorlagen-->
+        <div class="card" style="margin-bottom:10px">
+          <div class="small">Vorlagen</div>
+          <div class="variants" id="variantsBox"></div>
+          <div style="margin-top:8px">
+            <button class="ghost" onclick="newTemplate()">Neue Vorlage</button>
+          </div>
+        </div>
+
+        <!--Wochenansicht-->
+        <div class="card" style="margin-bottom:10px">
+          <div class="small">Wochenvorschau</div>
+          <div id="weekPreview" class="week"></div>
+        </div>
+
+        <!--kurze Info-->
+        <div class="card">
+          <div class="small">Kurz: Pflicht-Aufgaben werden wiederholt, wenn nicht erledigt. Du kannst Aufgaben für "nur heute" ändern oder die Vorlage aktualisieren (dann wirken Änderungen künftig).</div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const STORAGE_KEY = 'todo_app_v1';
+
+    let state = {
+        //Vorlage Standart und Ferien
+      templates: {
+        Standard: [
+          { id: id(), name:'Zähne putzen', duration:5, category:{name:'Hygiene',color:'#10b981'}, recommendedTime:'07:00-07:10', mandatory:true, recurring:'daily', completed:false },
+          { id: id(), name:'Frühstück', duration:15, category:{name:'Essen',color:'#f59e0b'}, recommendedTime:'07:10-07:25', mandatory:true, recurring:'daily', completed:false },
+          { id: id(), name:'Hausaufgaben', duration:45, category:{name:'Schule',color:'#3b82f6'}, recommendedTime:'16:00-17:00', mandatory:true, recurring:'daily', completed:false },
+          { id: id(), name:'Lesen', duration:20, category:{name:'Bildung',color:'#8b5cf6'}, recommendedTime:'20:00-20:30', mandatory:false, recurring:'daily', completed:false }
+        ],
+        Ferien: [
+          { id: id(), name:'Aufräumen', duration:10, category:{name:'Haushalt',color:'#ef4444'}, recommendedTime:'09:00-09:10', mandatory:true, recurring:'daily', completed:false },
+          { id: id(), name:'Draußen spielen', duration:60, category:{name:'Freizeit',color:'#10b981'}, recommendedTime:'10:00-11:00', mandatory:false, recurring:'daily', completed:false }
+        ]
+      },
+      days: {}, // keyed by 'YYYY-MM-DD'
+      currentDate: todayISO(),
+      currentVariant: 'Standard',
+    };
+
+    // -------------------- Hilfsfunktionen (Nötig für Liste)
+    function id(){return 't'+Math.floor(Math.random()*1e9)}
+    function todayISO(d=new Date()){return d.toISOString().slice(0,10)}
+    function formatDayTitle(iso){
+      const d = new Date(iso);
+      return d.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'short',day:'numeric'});
+    }
+
+    // -------------------- Persistenz (Nötig für Liste)
+    function loadState(){
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        try{const parsed = JSON.parse(raw);
+          // Merge parsed into default state for forward compatibility
+          state = {...state,...parsed};
+        }catch(e){console.warn('load error',e)}
+      }
+    }
+    function saveState(){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    // -------------------- Tagesplan generieren / laden (Nötig für Liste)
+    function generateDayFromTemplate(dateIso, variant){
+      const template = state.templates[variant] || [];
+      // tiefe Kopie und neue IDs
+      const tasks = template.map(t => ({...t, id:id(), completed:false}));
+      return { date: dateIso, variant: variant, tasks: tasks, streakComplete:false, bonusComplete:false };
+    }
+
+    function getDay(dateIso){
+      if(!state.days[dateIso]){
+        // neuen Tag erzeugen
+        state.days[dateIso] = generateDayFromTemplate(dateIso, state.currentVariant);
+        saveState();
+      }
+      return state.days[dateIso];
+    }
+
+    // -------------------- Rendering // (Nötig für Liste)
+    function renderAll(){
+      document.getElementById('todayLabel').textContent = state.currentDate;
+      renderVariantOptions();
+      renderTaskList();
+      renderVariantsBox();
+      renderWeekPreview();
+      renderStreaks();
+      document.getElementById('dayPicker').value = state.currentDate;
+      document.getElementById('dayTitle').textContent = formatDayTitle(state.currentDate);
+    }
+
+    function renderVariantOptions(){
+      const sel = document.getElementById('variantSelect');
+      sel.innerHTML = '';
+      Object.keys(state.templates).forEach(v => {
+        const o = document.createElement('option'); o.value = v; o.textContent = v; if(v===state.currentVariant) o.selected=true; sel.appendChild(o);
+      });
+    }
+
+    function renderTaskList(){
+      const ul = document.getElementById('taskList'); ul.innerHTML='';
+      const day = getDay(state.currentDate);
+      day.tasks.forEach(t => {
+        const li = document.createElement('li'); li.className='task';
+        if(t.completed) li.classList.add('completed');
+
+        const cb = document.createElement('input'); cb.type='checkbox'; cb.checked = !!t.completed;
+        cb.onchange = () => { toggleComplete(t.id); };
+
+        const left = document.createElement('div'); left.style.flex='1';
+        const title = document.createElement('div'); title.textContent = t.name; title.style.fontWeight='600';
+        const meta = document.createElement('div'); meta.className='meta';
+        meta.innerHTML = `<span class=duration>${t.duration ?? ''} Min</span> • ${t.recommendedTime ?? ''}`;
+
+        const cat = document.createElement('span'); cat.className='category-pill'; cat.textContent = t.category?.name||'Allg.'; cat.style.background = t.category?.color||'#999'; cat.style.marginLeft='6px';
+
+        meta.appendChild(cat);
+        left.appendChild(title); left.appendChild(meta);
+
+        const right = document.createElement('div'); right.style.display='flex'; right.style.flexDirection='column'; right.style.alignItems='flex-end';
+        const tag = document.createElement('div'); tag.textContent = t.mandatory ? 'Pflicht' : 'Zusatz'; tag.style.fontSize='12px'; tag.style.color = t.mandatory ? '#dc2626' : '#374151';
+        const dur = document.createElement('div'); dur.textContent = `${t.duration ?? '-'} Min`;
+
+        // Buttons: Edit (only today / template), Delete
+        const btns = document.createElement('div'); btns.style.marginTop='6px';
+        const editToday = document.createElement('button'); editToday.textContent='nur heute edit'; editToday.className='ghost'; editToday.onclick = ()=> editTask(t.id, false);
+        const editTemplate = document.createElement('button'); editTemplate.textContent='auch Vorlage'; editTemplate.className='ghost'; editTemplate.onclick = ()=> editTask(t.id, true);
+        const del = document.createElement('button'); del.textContent='Löschen'; del.className='ghost'; del.onclick = ()=> deleteTask(t.id);
+
+        btns.appendChild(editToday); btns.appendChild(editTemplate); btns.appendChild(del);
+
+        right.appendChild(tag); right.appendChild(dur); right.appendChild(btns);
+
+        li.appendChild(cb); li.appendChild(left); li.appendChild(right);
+        ul.appendChild(li);
+      });
+    }
+
+    function renderVariantsBox(){
+      const box = document.getElementById('variantsBox'); box.innerHTML='';
+      Object.keys(state.templates).forEach(v => {
+        const b = document.createElement('button'); b.className='ghost'; b.textContent = v; b.onclick = ()=> { state.currentVariant=v; saveState(); renderAll(); };
+        box.appendChild(b);
+      });
+    }
+
+    function renderWeekPreview(){
+      const container = document.getElementById('weekPreview'); container.innerHTML='';
+      const start = new Date(state.currentDate);
+      // start at monday of current week
+      const dayOfWeek = start.getDay(); // 0..6 (Sun..Sat)
+      const diffToMon = (dayOfWeek+6)%7; // 0 for Mon
+      start.setDate(start.getDate()-diffToMon);
+      for(let i=0;i<7;i++){
+        const d = new Date(start); d.setDate(start.getDate()+i);
+        const iso = todayISO(d);
+        const day = state.days[iso] || generateDayFromTemplate(iso, state.currentVariant);
+        const box = document.createElement('div'); box.className='day-compact';
+        box.innerHTML = `<div style="font-weight:700">${d.toLocaleDateString(undefined,{weekday:'short'})}</div><div style="font-size:12px; margin-top:6px">${day.tasks.filter(t=>t.mandatory && t.completed).length}/${day.tasks.filter(t=>t.mandatory).length} Pflicht</div>`;
+        box.onclick = ()=> { state.currentDate=iso; saveState(); renderAll(); };
+        container.appendChild(box);
+      }
+    }
+
+    function renderStreaks(){
+      document.getElementById('streakMandatory').textContent = state.streakMandatory;
+      document.getElementById('streakBonus').textContent = state.streakBonus;
+    }
+
+    // -------------------- Aktionen: Aufgaben hinzufügen/editieren --------------------
+    function addTaskFromForm(){
+      const name = document.getElementById('taskName').value.trim(); if(!name) return alert('Name eingeben');
+      const duration = parseInt(document.getElementById('taskDuration').value) || null;
+      const recommendedTime = document.getElementById('taskTime').value || null;
+      const catName = document.getElementById('taskCategory').value || 'Allgemein';
+      const catColor = document.getElementById('taskColor').value || '#6b7280';
+      const mandatory = document.getElementById('taskMandatory').value === 'true';
+      const recurring = document.getElementById('taskRecurring').value;
+
+      const newTask = { id:id(), name, duration, category:{name:catName,color:catColor}, recommendedTime, mandatory, recurring: recurring==='none'?null:recurring, completed:false };
+      // Standard: füge nur in diesen Tag ein
+      const day = getDay(state.currentDate);
+      day.tasks.push(newTask);
+      saveState(); renderAll();
+      // Form leeren
+      document.getElementById('taskName').value=''; document.getElementById('taskDuration').value='';
+    }
+
+    function findTaskById(taskId){
+      const day = getDay(state.currentDate);
+      const idx = day.tasks.findIndex(t=>t.id===taskId);
+      return {day,idx,task: day.tasks[idx]};
+    }
+
+    function editTask(taskId, updateTemplate=false){
+      const res = findTaskById(taskId);
+      if(!res.task) return;
+      const t = res.task;
+      const newName = prompt('Aufgabenname', t.name); if(newName===null) return;
+      t.name = newName;
+      const newDur = prompt('Dauer (Min)', t.duration||''); if(newDur!==null) t.duration = newDur?parseInt(newDur):null;
+      const newCat = prompt('Kategorie', t.category?.name||'Allgemein'); if(newCat!==null) t.category.name = newCat;
+      const newCol = prompt('Kategorie-Farbe (Hex)', t.category?.color||'#888888'); if(newCol!==null) t.category.color = newCol;
+
+      saveState(); renderAll();
+
+      if(updateTemplate){
+        // Versuche, die jeweilige Vorlage-Aufgabe zu finden (per Name) und updaten
+        const variant = state.currentVariant;
+        const tpl = state.templates[variant];
+        const match = tpl.find(x=>x.name===t.name);
+        if(match){
+          match.name = t.name; match.duration = t.duration; match.category = {...t.category};
+        } else {
+          // Falls nicht gefunden: neue Vorlage-Aufgabe hinzufügen
+          tpl.push({...t, id:id(), completed:false});
+        }
+        saveState(); alert('Vorlage aktualisiert für Variante '+variant);
+      }
+    }
+
+    function deleteTask(taskId){
+      const day = getDay(state.currentDate);
+      day.tasks = day.tasks.filter(t=>t.id!==taskId);
+      saveState(); renderAll();
+    }
+
+    function toggleComplete(taskId){
+      const day = getDay(state.currentDate);
+      const t = day.tasks.find(x=>x.id===taskId);
+      if(!t) return;
+      t.completed = !t.completed;
+      saveState();
+      updateStreaksForDay(day);
+      renderAll();
+    }
+
+    // -------------------- Carry-over & Streak-Logik --------------------
+    function applyCarryOver(){
+      // Manuell: unerledigte Pflichtaufgaben von heute nach morgen kopieren
+      const today = getDay(state.currentDate);
+      const tomorrowDate = new Date(state.currentDate); tomorrowDate.setDate(tomorrowDate.getDate()+1);
+      const tomIso = todayISO(tomorrowDate);
+      const tomorrow = state.days[tomIso] || generateDayFromTemplate(tomIso, state.currentVariant);
+      const unfinished = today.tasks.filter(t=>t.mandatory && !t.completed).map(t=>({...t, id:id(), completed:false}));
+      tomorrow.tasks = tomorrow.tasks.concat(unfinished);
+      state.days[tomIso] = tomorrow; saveState(); renderAll();
+      alert(unfinished.length + ' unerledigte Pflichtaufgaben nach morgen übertragen');
+    }
+
+    function updateStreaksForDay(day){
+      const allMandatoryDone = day.tasks.filter(t=>t.mandatory).every(t=>t.completed);
+      const allTasksDone = day.tasks.length>0 && day.tasks.every(t=>t.completed);
+      if(allMandatoryDone){ state.streakMandatory = (state.streakMandatory||0) + 1; day.streakComplete=true; } else { state.streakMandatory = 0; day.streakComplete=false; }
+      if(allTasksDone){ state.streakBonus = (state.streakBonus||0) + 1; day.bonusComplete=true; } else { state.streakBonus = 0; day.bonusComplete=false; }
+      saveState();
+    }
+
+    // -------------------- Day navigation --------------------
+    function prevDay(){ changeDateOffset(-1); }
+    function nextDay(){ changeDateOffset(1); }
+    function changeDateOffset(offset){ const d = new Date(state.currentDate); d.setDate(d.getDate()+offset); state.currentDate = todayISO(d); saveState(); renderAll(); }
+    function goToday(){ state.currentDate = todayISO(); saveState(); renderAll(); }
+    function changeVariant(v){ state.currentVariant = v; saveState(); renderAll(); }
+
+    document.getElementById('dayPicker').addEventListener('change', e=>{ state.currentDate = e.target.value; saveState(); renderAll(); });
+
+    // -------------------- Template editor (einfach) --------------------
+    function openTemplateEditor(){
+      const v = state.currentVariant;
+      const tpl = state.templates[v];
+      let out = 'Vorlage bearbeiten: '+v+'\n';
+      tpl.forEach((t,i)=> out += `${i+1}. ${t.name} [${t.mandatory? 'P':'Z'}] ${t.duration||''}min\n`);
+      alert(out);
+    }
+
+    function newTemplate(){
+      const name = prompt('Name der neuen Vorlage'); if(!name) return;
+      state.templates[name] = [];
+      state.currentVariant = name; saveState(); renderAll();
+    }
+
+    // -------------------- Reset auf Vorlage --------------------
+    function resetDay(){
+      if(!confirm('Tagesplan wirklich auf Vorlage zurücksetzen?')) return;
+      state.days[state.currentDate] = generateDayFromTemplate(state.currentDate, state.currentVariant);
+      saveState(); renderAll();
+    }
+
+    // -------------------- Wochenansicht (einfach modal-simulation) --------------------
+    function showWeekView(){
+      // einfache Darstellung: prompt mit Liste
+      const start = new Date(state.currentDate);
+      const out = [];
+      for(let i= -3; i<=3; i++){
+        const d = new Date(start); d.setDate(start.getDate()+i); const iso = todayISO(d);
+        const day = state.days[iso] || generateDayFromTemplate(iso, state.currentVariant);
+        const mandatoryDone = day.tasks.filter(t=>t.mandatory && t.completed).length;
+        const mandatoryTotal = day.tasks.filter(t=>t.mandatory).length;
+        out.push(`${iso}: ${mandatoryDone}/${mandatoryTotal} Pflicht`);
+      }
+      alert('Woche:\n' + out.join('\n'));
+    }
+
+    // -------------------- Init --------------------
+    loadState();
+    renderAll();
+
+    
+  </script>
+</body>
+</html>

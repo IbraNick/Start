@@ -1,0 +1,143 @@
+<!--Standart Anfang-->
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Task Manager Version 1.0</title> 
+  <style>
+    /* Einfaches, klares Styling - responsive */
+    
+    /* Für Alles */
+    *{box-sizing:border-box;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif}
+    /*Für ganzen Körper*/
+    body{margin:0;background:var(--bg);color:#111}
+    /* Für ganzen header */
+    header{background:linear-gradient(90deg,#eef2ff,#f8fafc);padding:18px}
+    /* Für h1 */
+    h1{margin:0 0 6px;font-size:20px}
+    .container{max-width:980px;margin:18px auto;padding:12px}
+    .top{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+    .card{background:var(--card);border-radius:10px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06)}
+    input,select,button{padding:8px;border-radius:8px;border:1px solid #e6e9ef}
+    button{background:var(--accent);color:white;border:none;cursor:pointer}
+    button.ghost{background:transparent;color:var(--accent);border:1px solid #e5e7eb}
+
+    #controls{display:flex;gap:8px;align-items:center}
+    #dateNav{display:flex;gap:6px;align-items:center}
+
+    .grid{display:grid;grid-template-columns:1fr 340px;gap:12px;margin-top:12px}
+    .tasks-list{padding:8px;min-height:300px}
+    ul.tasks{list-style:none;padding:0;margin:0}
+    li.task{display:flex;gap:8px;padding:8px;border-radius:8px;align-items:center;border:1px solid #f0f0f3;margin-bottom:8px}
+    li.task .meta{display:flex;flex-direction:column;font-size:13px;color:var(--muted)}
+    .category-pill{padding:6px 8px;border-radius:999px;color:#fff;font-weight:600;font-size:12px}
+    .task .duration{font-size:12px;color:var(--muted)}
+    .completed{opacity:0.6;text-decoration:line-through}
+
+    .side{position:sticky;top:18px}
+    .small{font-size:13px;color:var(--muted)}
+    .variants{display:flex;gap:6px;margin-top:8px}
+
+    .week{display:flex;gap:8px;margin-top:10px}
+    .day-compact{flex:1;background:#fff;padding:8px;border-radius:8px;text-align:center}
+
+    @media(max-width:880px){
+      .grid{grid-template-columns:1fr;}
+      .side{position:relative}
+    }
+  </style>
+</head>
+
+
+<body>
+    <!--Überschrift; Unterüberchrift; Datum-->
+  <header>
+    <div class="container top">
+      <div>
+        <h1>Task Manager Version 1.0</h1>
+        <div class="small">Tägliche ToDos</div>
+      </div>
+      <div style="margin-left:auto;" class="small">Datum: <span id="todayLabel"></span></div>
+    </div>
+  </header>
+
+   <!--Start Hauptklasse-->
+  <main class="container">
+   <!--Erster div für Navigationen-->
+    <div id="controls" class="card">
+        <!--mit div für Tagesnavigation-->
+      <div id="dateNav">
+        <button onclick="prevDay()">vorheriger Tag</button>
+        <input type="date" id="dayPicker" />
+        <button onclick="nextDay()">nächster Tag</button>
+        <button class="ghost" onclick="goToday()">Heute</button>
+      </div>
+
+        <!--und div für Variantennavigation-->
+      <div>
+        Variante:
+        <select id="variantSelect" onchange="changeVariant(this.value)"></select>
+        <button class="ghost" onclick="openTemplateEditor()">Vorlage editieren</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Hauptbereich: Aufgaben für den Tag -->
+      <section class="card tasks-list">
+        <h3 id="dayTitle">Aufgaben</h3>
+
+        <!-- Form zum Hinzufügen/Anpassen -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <input id="taskName" placeholder="Aufgabenbezeichnung" style="flex:2" />
+          <input id="taskDuration" placeholder="Min" style="width:70px" type="number" min="1" />
+          <input id="taskTime" placeholder="Empf. Zeit (z.B. 08:00-09:00)" style="width:160px" />
+          <input id="taskCategory" placeholder="Kategorie" style="width:100px" />
+          <input id="taskColor" type="color" value="#ff8a65" style="width:46px" />
+          <select id="taskMandatory">
+            <option value="true">Pflicht</option>
+            <option value="false">Zusatz</option>
+          </select>
+          <select id="taskRecurring">
+            <option value="none">Nicht wiederholen</option>
+            <option value="daily">Täglich</option>
+            <option value="weekly">Wöchentlich</option>
+          </select>
+          <button onclick="addTaskFromForm()">Aufgabe +</button>
+        </div>
+
+        <!--Liste mit den Aufgaben des ausgewählten Tages-->
+        <ul id="taskList" class="tasks"></ul>
+
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="saveDay()" class="ghost">Speichern</button>
+          <button onclick="resetDay()" class="ghost">Auf Vorlage zurücksetzen</button>
+          <button onclick="applyCarryOver()" class="ghost">Unerledigte nach morgen tragen</button>
+        </div>
+      </section>
+
+      <!-- Seitenleiste: Vorlagen, Wochenansicht kompakt, Hilfe -->
+      <aside class="side">
+        <!--Vorlagen-->
+        <div class="card" style="margin-bottom:10px">
+          <div class="small">Vorlagen</div>
+          <div class="variants" id="variantsBox"></div>
+          <div style="margin-top:8px">
+            <button class="ghost" onclick="newTemplate()">Neue Vorlage</button>
+          </div>
+        </div>
+
+        <!--Wochenansicht-->
+        <div class="card" style="margin-bottom:10px">
+          <div class="small">Wochenvorschau</div>
+          <div id="weekPreview" class="week"></div>
+        </div>
+
+        <!--kurze Info-->
+        <div class="card">
+          <div class="small">Kurz: Pflicht-Aufgaben werden wiederholt, wenn nicht erledigt. Du kannst Aufgaben für "nur heute" ändern oder die Vorlage aktualisieren (dann wirken Änderungen künftig).</div>
+        </div>
+      </aside>
+    </div>
+  </main>
