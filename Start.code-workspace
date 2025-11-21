@@ -1,13 +1,11 @@
 {
 	"folders": [
 		{
+			"name": "Start",
 			"path": "."
-		},
-		{
-			"path": "../C++"
 		}
 	],
 	"settings": {
-		"liveServer.settings.multiRootWorkspaceName": "Start"
+		"liveServer.settings.multiRootWorkspaceName": "Study"
 	}
 }
